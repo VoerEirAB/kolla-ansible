@@ -1,4 +1,1 @@
-[client.cinder]
-	key = AQDub8VhAAAAABAAz5ChooMqdj4pAxWHYBuLyQ==
-	caps mon = "profile rbd"
-	caps osd = "profile rbd pool=volumes, profile rbd pool=vms, profile rbd pool=images"
+/home/voereir/kolla/kolla-ansible/ceph/ceph.client.cinder.keyring

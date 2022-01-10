@@ -1,4 +1,1 @@
-[client.gnocchi]
-	key = AQDzb8VhAAAAABAAfiXrQA2uXzRFJhoFxwkWOg==
-	caps mon = "profile rbd"
-	caps osd = "profile rbd pool=metrics"
+/home/voereir/kolla/kolla-ansible/ceph/ceph.client.gnocchi.keyring

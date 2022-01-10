@@ -201,7 +201,7 @@ function init_ovs_interfaces {
             ovs-vsctl --no-wait --may-exist add-port $bridge "dpdk${dpdk_port_number}" \
             -- set Interface  "dpdk${dpdk_port_number}" type=dpdk
         else
-            ovs-vsctl --may-exist add-port $bridge $nic \
+            ovs-vsctl --no-wait --may-exist add-port $bridge $nic \
             -- set Interface  $nic type=dpdk options:dpdk-devargs=$addr
         fi
 
