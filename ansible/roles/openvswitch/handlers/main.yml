@@ -23,7 +23,7 @@
   register: check_result
   until: check_result is success
   changed_when: False
-  retries: 30
+  retries: 160
   delay: 2
 
 - name: Restart openvswitch-vswitchd container
