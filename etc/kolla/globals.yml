@@ -50,7 +50,9 @@ openstack_release: "xena"
 # All-In-One without haproxy and keepalived, you can set enable_haproxy to no
 # in "OpenStack options" section, and set this value to the IP of your
 # 'network_interface' as set in the Networking section below.
-kolla_internal_vip_address: "172.16.227.104"
+# kolla_internal_vip_address: "172.16.227.104"
+kolla_internal_vip_address: "10.0.0.123"
+# kolla_internal_vip_address: "10.0.0.104"
 
 # This is the DNS name that maps to the kolla_internal_vip_address VIP. By
 # default it is the same as kolla_internal_vip_address.
@@ -61,7 +63,7 @@ kolla_internal_vip_address: "172.16.227.104"
 # kolla_internal_vip_address, allowing internal and external communication to
 # share the same address.  Specify a kolla_external_vip_address to separate
 # internal and external requests between two VIPs.
-#kolla_external_vip_address: "{{ kolla_internal_vip_address }}"
+kolla_external_vip_address: "172.16.227.123"
 
 # The Public address used to communicate with OpenStack as set in the public_url
 # for the endpoints that will be created. This DNS name should map to
@@ -126,11 +128,11 @@ network_interface: "eno1"
 # These can be adjusted for even more customization. The default is the same as
 # the 'network_interface'. These interfaces must contain an IP address.
 #kolla_external_vip_interface: "{{ network_interface }}"
-#api_interface: "{{ network_interface }}"
+api_interface: "eno2"
 #storage_interface: "{{ network_interface }}"
 #swift_storage_interface: "{{ storage_interface }}"
 #swift_replication_interface: "{{ swift_storage_interface }}"
-tunnel_interface: "br-ex"
+tunnel_interface: "eno1"
 #dns_interface: "{{ network_interface }}"
 #octavia_network_interface: "{{ api_interface }}"
 
@@ -151,7 +153,7 @@ tunnel_interface: "br-ex"
 # though an IP address can exist on this interface, it will be unusable in most
 # configurations. It is recommended this interface not be configured with any IP
 # addresses for that reason.
-neutron_external_interface: "enp8s0f0"
+neutron_external_interface: "eno1"
 
 # Valid options are [ openvswitch, ovn, linuxbridge, vmware_nsxv, vmware_nsxv3, vmware_dvs ]
 # if vmware_nsxv3 is selected, enable_openvswitch MUST be set to "no" (default is yes)
@@ -278,7 +280,7 @@ openstack_logging_debug: "True"
 # could disable some of these required roles and run their own services.
 #enable_glance: "{{ enable_openstack_core | bool }}"
 #enable_hacluster: "no"
-enable_haproxy: "no"
+enable_haproxy: "yes"
 #enable_keepalived: "{{ enable_haproxy | bool }}"
 #enable_keystone: "{{ enable_openstack_core | bool }}"
 #enable_mariadb: "yes"
@@ -589,8 +591,8 @@ nova_console: "novnc"
 
 # SRIOV physnet:interface mappings when SRIOV is enabled
 # "sriovnet1" and tunnel_interface used here as placeholders
-neutron_sriov_physnet_mappings:
-  sriovnet1: enp8s0f1
+# neutron_sriov_physnet_mappings:
+#   sriovnet1: enp8s0f1
 
 #############################
 # Horizon - Dashboard Options
