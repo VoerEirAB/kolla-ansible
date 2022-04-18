@@ -181,6 +181,10 @@
   notify:
     - "Restart {{ service_name }} container"
 
+- name: Waiting 120 seconds for the controller to get the VIP.
+  wait_for:
+      host: "{{ 'tunnel' | kolla_address }}"
+
 - name: Copying over openvswitch_agent.ini
   become: true
   vars:

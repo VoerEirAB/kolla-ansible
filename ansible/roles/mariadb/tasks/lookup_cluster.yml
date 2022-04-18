@@ -22,7 +22,7 @@
         host: "{{ api_interface_address }}"
         port: "{{ mariadb_port }}"
         connect_timeout: 1
-        timeout: 10
+        timeout: 30
         search_regex: "MariaDB"
       register: check_mariadb_port_liveness
       ignore_errors: yes
