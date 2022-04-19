@@ -60,3 +60,4 @@ ansible/*.retry
 
 venv/
 ceph/
+etc/kolla/admin-openrc.sh

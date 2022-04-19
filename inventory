@@ -13,11 +13,11 @@ controller ansible_user=ubuntu
 control
 
 [compute]
-compute01 ansible_user=ubuntu
-compute02 ansible_user=ubuntu
-# compute03 ansible_user=ubuntu
 compute04 ansible_user=ubuntu
-compute05 ansible_user=ubuntu
+compute06 ansible_user=ubuntu
+compute13 ansible_user=ubuntu
+# compute03 ansible_user=ubuntu
+# compute05 ansible_user=ubuntu
 
 [monitoring]
 controller
@@ -28,11 +28,12 @@ controller
 #compute01 neutron_external_interface=eth0 api_interface=em1 storage_interface=em1 tunnel_interface=em1
 
 [storage]
-compute01
-compute02
+compute04 ansible_user=ubuntu
+compute06 ansible_user=ubuntu
+compute13 ansible_user=ubuntu
 # compute03
-compute04
-compute05
+# compute04
+# compute05
 
 [deployment]
 localhost       ansible_connection=local

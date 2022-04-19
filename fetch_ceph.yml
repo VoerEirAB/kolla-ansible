@@ -15,5 +15,5 @@
 
   tasks:
     - name: Pull the /etc/ceph dir from the controller
-      synchronize: src=/etc/ceph dest="{{ playbook_dir}}" mode=pull
+      synchronize: src=/etc/ceph dest="{{ playbook_dir }}" mode=pull
       run_once: true
