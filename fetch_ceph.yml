@@ -1,8 +1,7 @@
 ---
 # Defines deployment design and assigns role to server groups
 
-- hosts:
-  - compute
+- hosts: compute
 
   gather_facts: false
   any_errors_fatal: true

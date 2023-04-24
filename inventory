@@ -15,7 +15,9 @@ control
 [compute]
 compute04 ansible_user=ubuntu
 compute06 ansible_user=ubuntu
-compute13 ansible_user=ubuntu
+compute07 ansible_user=ubuntu
+#compute08 ansible_user=ubuntu
+#compute09 ansible_user=ubuntu
 # compute03 ansible_user=ubuntu
 # compute05 ansible_user=ubuntu
 
@@ -30,7 +32,9 @@ controller
 [storage]
 compute04 ansible_user=ubuntu
 compute06 ansible_user=ubuntu
-compute13 ansible_user=ubuntu
+compute07 ansible_user=ubuntu
+#compute08 ansible_user=ubuntu
+#compute09 ansible_user=ubuntu
 # compute03
 # compute04
 # compute05

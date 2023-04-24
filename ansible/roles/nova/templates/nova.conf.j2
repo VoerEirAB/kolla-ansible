@@ -12,6 +12,9 @@ log_dir = /var/log/kolla/nova
 
 state_path = /var/lib/nova
 allow_resize_to_same_host = true
+#Added bcoz instance failed due to timeout error, waiting for cinder volume
+block_device_allocate_retries = 300
+block_device_allocate_retries_interval = 3
 
 # Though my_ip is not used directly, lots of other variables use $my_ip
 my_ip = {{ api_interface_address }}
@@ -37,6 +40,8 @@ enabled_filters = AvailabilityZoneFilter,ComputeFilter,ComputeCapabilitiesFilter
 # info updates to the scheduler, so just disable it.
 track_instance_changes = False
 {% endif %}
+
+enabled_filters=ComputeFilter,AvailabilityZoneFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,ServerGroupAntiAffinityFilter,ServerGroupAffinityFilter,NUMATopologyFilter,SameHostFilter,DifferentHostFilter,AggregateInstanceExtraSpecsFilter{% if enable_neutron_sriov | bool %},PciPassthroughFilter{% endif %}
 
 [api]
 use_forwarded_for = true
