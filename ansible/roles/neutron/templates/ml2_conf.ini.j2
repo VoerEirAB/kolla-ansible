@@ -16,15 +16,23 @@ extension_drivers = {{ neutron_extension_drivers | map(attribute='name') | join(
 [ml2_type_vlan]
 {% if enable_ironic | bool %}
 network_vlan_ranges = physnet1
+{% elif enable_neutron_sriov | bool %}
+network_vlan_ranges = sriovnet1:1000:1009
 {% else %}
 network_vlan_ranges =
+{% endif %}
+
+{% if enable_neutron_sriov | bool %}
+[ml2_sriov]
+agent_required = False
+supported_pci_vendor_devs = 8086:154d
 {% endif %}
 
 [ml2_type_flat]
 {% if enable_ironic | bool %}
 flat_networks = *
 {% else %}
-flat_networks = {% for interface in neutron_external_interface.split(',') %}physnet{{ loop.index0 + 1 }}{% if not loop.last %},{% endif %}{% endfor %}
+flat_networks = {% for interface in neutron_external_interface.split(',') %}physnet{{ loop.index0 + 1 }}{% if not loop.last %},{% endif %}{% endfor %}{% if enable_neutron_sriov | bool %},sriovnet1{% endif %}
 {% endif %}
 
 [ml2_type_vxlan]

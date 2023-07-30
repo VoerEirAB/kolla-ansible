@@ -1,0 +1,18 @@
+---
+# Defines deployment design and assigns role to server groups
+
+- hosts: compute
+
+  gather_facts: false
+  any_errors_fatal: true
+  become: true
+
+  tags: always
+
+  vars:
+    delegate_facts_host: True
+
+  tasks:
+    - name: Pull the /etc/ceph dir from the controller
+      synchronize: src=/etc/ceph dest="{{ playbook_dir }}" mode=pull
+      run_once: true

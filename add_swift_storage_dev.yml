@@ -1,0 +1,14 @@
+---
+- hosts: compute
+  tasks:
+  - name: create directory in srv mount point
+    become: true
+    file:
+      path: "{{ item }}"
+      state: directory
+      mode: 0777
+
+    with_items:
+      - '/srv/node/d0'
+      - '/srv/node/d1'
+      - '/srv/node/d2'
