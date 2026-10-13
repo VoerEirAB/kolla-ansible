@@ -290,6 +290,8 @@ kolla_internal_fqdn_cert: "{{ kolla_certificates_dir }}//fullchain.pem"
 # Use these options to set the various log levels across all OpenStack projects
 # Valid options are [ True, False ]
 openstack_logging_debug: "True"
+# libvirt debug logging writes ~15 GB/day per compute host; keep it off (2026-10-13)
+nova_libvirt_logging_debug: "False"
 
 # Enable core OpenStack services. This includes:
 # glance, keystone, neutron, nova, heat, and horizon.

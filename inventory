@@ -13,8 +13,16 @@ control
 
 [compute]
 compute04 ansible_user=ubuntu
+#compute05 ansible_user=ubuntu
 compute06 ansible_user=ubuntu
-compute07 ansible_user=ubuntu
+#compute07 ansible_user=ubuntu
+compute09 ansible_user=ubuntu
+#compute17 ansible_user=ubuntu network_interface="eno4" tunnel_interface="eno4" neutron_external_interface="eno3" api_interface="eno4"
+#compute18 ansible_user=ubuntu network_interface="eno4" tunnel_interface="eno4" neutron_external_interface="eno3" api_interface="eno4"
+
+[extracompute]
+#compute17 ansible_user=ubuntu network_interface="eno4" tunnel_interface="eno4" neutron_external_interface="eno3" api_interface="eno4"
+#compute18 ansible_user=ubuntu network_interface="eno4" tunnel_interface="eno4" neutron_external_interface="eno3" api_interface="eno4"
 
 [monitoring]
 controller
@@ -25,8 +33,10 @@ controller
 
 [storage]
 compute04 ansible_user=ubuntu
+#compute05 ansible_user=ubuntu
 compute06 ansible_user=ubuntu
-compute07 ansible_user=ubuntu
+#compute07 ansible_user=ubuntu
+compute09 ansible_user=ubuntu
 
 [deployment]
 localhost       ansible_connection=local
@@ -322,12 +332,14 @@ cinder
 
 [cinder-backup:children]
 storage
+extracompute
 
 [cinder-scheduler:children]
 cinder
 
 [cinder-volume:children]
 storage
+extracompute
 
 # Cloudkitty
 [cloudkitty-api:children]

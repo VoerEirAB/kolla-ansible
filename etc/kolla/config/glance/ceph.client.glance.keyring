@@ -1,4 +1,4 @@
 [client.glance]
-	key = AQAzWsdkAAAAABAAYQA/vdLe5DXV07O4TlUaWw==
-	caps mon = "profile rbd"
-	caps osd = "profile rbd pool=volumes, profile rbd pool=images"
+        key = AQAOKz9nAAAAABAAS/+FUWsYRuoyOoj85XwL1w==
+        caps mon = "profile rbd"
+        caps osd = "profile rbd pool=volumes, profile rbd pool=images"
