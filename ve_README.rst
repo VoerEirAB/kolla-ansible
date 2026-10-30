@@ -21,7 +21,8 @@ Host
 * Ubuntu 24.04. MAAS fails to deploy 24.04 and later on this machine
   (`LP: #2171042 <https://bugs.launchpad.net/maas/+bug/2171042>`__), so it is
   deployed as 22.04 and upgraded with ``do-release-upgrade``.
-* Container engine: podman.
+* Container engine: Docker. podman was used first and dropped; see
+  `Why Docker, not podman`_.
 
 Storage
 -------
@@ -64,13 +65,16 @@ same ports.
 
 OpenStack networks (created by ``voereir07-networks.sh``):
 
-* ``primary``: tenant VXLAN network (normal vNICs), routed to ``public``.
+* ``private``: tenant VXLAN network (normal vNICs), routed to ``public``.
 * ``public``: flat on ``physnet2``, 172.16.227.0/24, gateway .1. Floating IPs
   172.16.227.12-19 (reserved in MAAS); the router gateway takes .12, leaving 7
   floating IPs.
 * ``dpdk-net``: flat on ``physnet1``, 20.0.0.0/24, no gateway.
-* ``sriov-net``: VLAN 1000 on ``sriovnet1``, 30.0.0.0/24, no gateway. Ports
-  use ``--vnic-type direct``.
+* ``sriov-net``: VLAN 1000 on ``sriovnet1``, 30.0.0.0/24, no gateway, no DHCP.
+  Ports use ``--vnic-type direct``. Neutron's DHCP server is an OVS port, and
+  OVS has no bridge for ``sriovnet1`` (it exists only as VFs), so its DHCP
+  port ends up ``DOWN`` with ``binding_vif_type: binding_failed`` and VMs get
+  no address. With DHCP off, cloud-init sets the address from the metadata.
 
 On a DPDK host every normal vNIC is a vhost-user port, so every VM needs a
 flavor with ``hw:mem_page_size=1GB``.
@@ -109,6 +113,10 @@ Files
 ``ansible/roles/ovs-dpdk/``
     Patched to pass ``ovs_coremask``, ``ovs_pmd_coremask`` and
     ``ovs_dpdk_interface_driver`` to ``ovs-dpdkctl.sh``.
+
+``ansible/roles/destroy/``
+    Patched to run its container, image and engine-check scripts with
+    ``become``, so ``destroy`` works with a password-protected ``sudo``.
 
 ``CloudConfig-voereir07-kolla-aio.yaml``
     MAAS cloud-init user data.
@@ -309,7 +317,7 @@ the warning is harmless.
 
 This venv runs kolla-ansible. kolla's modules on the host run in a second one,
 ``/opt/kolla-runtime-venv`` (``virtualenv`` in ``globals.yml``), which
-``bootstrap-servers`` creates with ``dbus-python`` and the podman SDK. The
+``bootstrap-servers`` creates with ``dbus-python`` and the Docker SDK. The
 ``libdbus-glib-1-dev`` and ``pkg-config`` packages are needed to build
 ``dbus-python``. Without the runtime venv, prechecks fail with ``No module
 named 'dbus'``.
@@ -368,7 +376,7 @@ Check:
 4. Bootstrap the server
 -----------------------
 
-Installs podman, creates the ``kolla`` user, adds the host to ``/etc/hosts``
+Installs Docker, creates the ``kolla`` user, adds the host to ``/etc/hosts``
 and disables host firewalls:
 
 .. code-block:: console
@@ -434,11 +442,11 @@ driver, port mappings), delete it before ``deploy`` or ``reconfigure``.
 
 .. code-block:: console
 
-   sudo podman ps --format '{{.Names}}\t{{.Status}}' | grep -v healthy
+   sudo docker ps --format '{{.Names}}\t{{.Status}}' | grep -v healthy
    openstack network agent list
    openstack compute service list
-   sudo podman exec ovsdpdk_db ovs-vsctl show
-   sudo podman exec ovsdpdk_vswitchd ovs-appctl dpif-netdev/pmd-rxq-show
+   sudo docker exec ovsdpdk_db ovs-vsctl show
+   sudo docker exec ovsdpdk_vswitchd ovs-appctl dpif-netdev/pmd-rxq-show
 
 Expected:
 
@@ -454,9 +462,10 @@ Expected:
 
    bash /opt/voereir_admin/kolla-ansible/voereir07-networks.sh
    openstack network list
-   openstack router show primary-router -c external_gateway_info
+   openstack router show private-router -c external_gateway_info
 
-The script also adds eno2 to ``br_ex`` and creates the ``m1.small.hp``
+The script turns DHCP off on ``sriov-subnet`` (also for a subnet created
+earlier with DHCP), adds eno2 to ``br_ex`` and creates the ``m1.small.hp``
 flavor. It can be run again safely.
 
 10. Test VM
@@ -471,12 +480,33 @@ A VM with a normal, an OVS-DPDK and an SR-IOV vNIC, and a floating IP:
    openstack security group rule create --proto icmp default
    openstack security group rule create --proto tcp --dst-port 22 default
    openstack port create --network sriov-net --vnic-type direct vm1-sriov
-   openstack server create --flavor m1.small.hp --image cirros --nic net-id=primary --nic net-id=dpdk-net --nic port-id=vm1-sriov --wait vm1
+   openstack server create --flavor m1.small.hp --image cirros --nic net-id=private --nic net-id=dpdk-net --nic port-id=vm1-sriov --wait vm1
    FIP=$(openstack floating ip create public -f value -c floating_ip_address) && openstack server add floating ip vm1 $FIP && echo $FIP
    ping -c3 $FIP && ssh cirros@$FIP
 
 The CirrOS login is ``cirros`` / ``gocubsgo``. Pinned VMs need a flavor with
 ``hw:cpu_policy=dedicated`` as well.
+
+Inside an Ubuntu guest, the three vNICs look like this (``ip -br addr``,
+``dpdk-devbind.py -s``):
+
+* ``private``: virtio (vhost-user on the host), MTU 1450 because of VXLAN,
+  plus the floating IP.
+* ``dpdk-net``: virtio, MTU 1500. A high *RX dropped* count is normal: the
+  network is the switch's shared VLAN 1, and the guest drops frames it has no
+  use for (spanning tree, LLDP, other hosts' broadcasts).
+* ``sriov-net``: ``82599 Ethernet Controller Virtual Function`` with driver
+  ``ixgbevf``. Its address comes from the metadata, as ``sriov-subnet`` has
+  no DHCP; images whose network setup only does DHCP (or VMs created while
+  the subnet still had DHCP) need it set by hand. SR-IOV works end to end when
+  the host's VLAN 1000 address answers:
+
+  .. code-block:: console
+
+     sudo ip addr add 30.0.0.220/24 dev ens6 && ping -c3 30.0.0.107
+
+To use DPDK inside the guest on the VF, bind it to ``vfio-pci`` there (with
+``vfio``'s no-IOMMU mode, as the guest has no virtual IOMMU).
 
 Domain name and TLS on an existing deployment
 =============================================
@@ -517,8 +547,25 @@ The first deployment ran without HAProxy, with the APIs on
    Horizon is at ``https://hibiscus.voereir.io``.
 
 ``keepalived_virtual_router_id`` must be unique among VRRP users on
-VLAN 2725; other kolla clouds there may use the default 51. ProxySQL stays
-disabled; HAProxy fronts MariaDB.
+VLAN 2725; other kolla clouds there may use the default 51.
+
+ProxySQL must be enabled (``enable_proxysql``, on by default). In kolla-ansible
+2026.2 HAProxy no longer fronts MariaDB; the services reach the database at
+``hibiscus.voereir.io:3306`` (the VIP), where only ProxySQL listens. MariaDB
+itself listens on 172.16.227.107:3306. With ProxySQL disabled, ``deploy``
+fails at *Creating keystone database* with ``Can't connect to MySQL server on
+'hibiscus.voereir.io' ([Errno 111] Connection refused)``. (It was disabled in
+the first deployment, where the "VIP" was the host address and ProxySQL would
+have clashed with MariaDB on 172.16.227.107:3306.)
+
+Database TLS is off (``database_enable_tls_internal: "no"``). With ProxySQL and
+``kolla_enable_tls_internal`` it would be on, and prechecks fail with
+``Database internal CA certificate file is not found. It needs to be named
+'proxysql-ca.pem'``: it needs the CA that issued the certificate (for Let's
+Encrypt, the intermediate) in ``/etc/kolla/certificates/proxysql-ca.pem`` and
+``openstack_cacert`` set for the services' connection strings. All database
+traffic stays on this host, and Let's Encrypt intermediates change between
+renewals, which would break every database connection after a renewal.
 
 Renewing the certificate
 ------------------------
@@ -531,6 +578,88 @@ HAProxy and restart it:
 .. code-block:: console
 
    kolla-ansible reconfigure -i $INV -t loadbalancer
+
+Why Docker, not podman
+======================
+
+The first deployment used podman (``kolla_container_engine: podman``), which
+kolla-ansible 2026.2 supports and tests on Ubuntu 24.04. It was dropped after
+the move to HTTPS:
+
+* Prechecks failed at *Checking free port for iscsi*: port 3260 was in use.
+  It was held by kolla's own ``tgtd``; the check only ran because kolla did
+  not see the ``iscsid`` container, which was ``Created`` but had never
+  started.
+* ``podman start iscsid`` failed with ``container ... and volume kolla_logs
+  share lock ID 0: deadlock due to lock mismatch``. The systemd unit
+  ``kolla-iscsid-container.service`` had given up after 10 restarts (exit
+  code 125). Without ``iscsid``, Cinder volumes cannot be attached to VMs.
+* ``podman system locks`` showed 13 shared lock IDs, each between a container
+  and one or more volumes; two of them were also shared between two volumes
+  (``iscsi_info`` and ``nova_compute``; ``rabbitmq`` and ``libvirtd``). podman 4.9.3, the version
+  in Ubuntu 24.04, had handed out duplicate lock IDs during a normal deploy.
+* podman's fix, ``podman system renumber``, fails with its SQLite database
+  backend (the default here): ``updating volume config table with new
+  configuration for volume kolla_logs: no such column: ID``.
+
+The volume-to-volume conflicts can't be removed without recreating volumes,
+and the cause wasn't known, so the problem could come back. Docker has no such
+per-object locks, and kolla's OVS-DPDK and SR-IOV support has far more use on
+Docker. The cloud was only hours old, so it was destroyed and redeployed on
+Docker.
+
+Switching an existing podman deployment to Docker
+-------------------------------------------------
+
+Run ``destroy`` while ``/etc/kolla/globals.yml`` still says ``podman``: it
+removes the containers and volumes with the engine set there. It also deletes
+any address on the host that equals the VIP, so check that the VIP in the
+current ``globals.yml`` is 172.16.227.7, not the host address .107.
+
+.. code-block:: console
+
+   grep -E '^(kolla_container_engine|kolla_internal_vip_address)' /etc/kolla/globals.yml   # podman, 172.16.227.7
+   kolla-ansible destroy -i $INV --yes-i-really-really-mean-it
+   sudo podman system reset --force       # what destroy left behind: images, storage, lock state
+   sudo podman ps -a; sudo podman volume ls # both empty
+
+Upstream, ``destroy`` runs ``sudo <engine> ...`` from plain scripts, outside
+Ansible's become, so the password given through ``ANSIBLE_BECOME_ASK_PASS``
+doesn't reach them, and it fails with ``User <user> can't seem to run Podman
+commands``. This branch runs those scripts (``validate_docker_execute.yml``,
+``cleanup_containers.yml``, ``cleanup_images.yml`` in
+``ansible/roles/destroy/tasks/``) with ``become: true``. Without that patch,
+allow password-less ``sudo`` for the duration of ``destroy`` only:
+
+.. code-block:: console
+
+   echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/99-kolla-destroy && sudo chmod 440 /etc/sudoers.d/99-kolla-destroy && sudo visudo -cf /etc/sudoers.d/99-kolla-destroy
+   kolla-ansible destroy -i $INV --yes-i-really-really-mean-it
+   sudo rm /etc/sudoers.d/99-kolla-destroy
+
+If ``destroy`` hangs on podman locks, stop it, run ``podman system reset
+--force``, then run ``destroy`` again to clean up the host. ``destroy`` keeps
+``/etc/kolla/passwords.yml``, ``globals.yml``, ``config/`` and
+``certificates/``; it removes the generated service configs, the kolla
+systemd units and the ovs-dpdk service (enp8s0f0 goes back to the kernel
+driver). Cinder LVM volumes created before stay in ``cinder-volumes``; check
+with ``sudo lvs cinder-volumes``. Leftover volumes are named ``volume-<uuid>``;
+remove them with ``sudo lvremove cinder-volumes/volume-<uuid>``. Keep
+``cinder-volumes-pool``: it is the thin pool Cinder's LVM driver creates the
+volumes in, and the new deployment reuses it.
+
+Then bring the Docker ``globals.yml`` to the node (step 0) and deploy again
+from step 4:
+
+.. code-block:: console
+
+   grep -E '^kolla_container_engine' /etc/kolla/globals.yml                                # docker
+   kolla-ansible bootstrap-servers -i $INV
+   kolla-ansible prechecks -i $INV --use-test-images
+   kolla-ansible deploy -i $INV
+   kolla-ansible post-deploy -i $INV
+
+Continue with steps 8 to 10.
 
 Changing the configuration
 ==========================

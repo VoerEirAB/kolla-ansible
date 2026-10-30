@@ -1,5 +1,6 @@
 ---
 - name: Removing Kolla images
+  become: true
   ansible.builtin.script: ../tools/cleanup-images --all -e "{{ kolla_container_engine }}"
   when:
     - destroy_include_images | bool

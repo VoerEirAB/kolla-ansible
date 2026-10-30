@@ -98,9 +98,12 @@ kolla_external_fqdn: "hibiscus.voereir.io"
 # Set desired container engine to deploy on or migrate to
 # Valid options are [ docker, podman ]
 #kolla_container_engine: docker
-kolla_container_engine: podman
+# Docker, not podman: podman 4.9.3 (Ubuntu 24.04) gave several containers and
+# volumes the same lock IDs, so iscsid could not start, and its fix
+# ("podman system renumber") fails with the SQLite backend. See ve_README.rst.
+kolla_container_engine: docker
 
-# Python venv on the target host for kolla's modules (dbus, podman SDK).
+# Python venv on the target host for kolla's modules (dbus, Docker SDK).
 # Created by bootstrap-servers and used as ansible_python_interpreter, so the
 # kolla-ansible venv doesn't need them. Same as kolla's Ubuntu CI.
 virtualenv: "/opt/kolla-runtime-venv"
@@ -264,6 +267,10 @@ keepalived_virtual_router_id: "107"
 # internal settings (external follows). Certificate: *.voereir.io wildcard in
 # /etc/kolla/certificates/haproxy-internal.pem (fullchain + private key).
 kolla_enable_tls_internal: true
+# No TLS between services and ProxySQL: all database traffic stays on this
+# host, and it would need the issuing CA (Let's Encrypt intermediate, which
+# changes between renewals) as proxysql-ca.pem plus openstack_cacert.
+database_enable_tls_internal: "no"
 #kolla_enable_tls_external: "{{ kolla_enable_tls_internal if kolla_same_external_internal_vip | bool else 'no' }}"
 #kolla_certificates_dir: "{{ node_config }}/certificates"
 #kolla_external_fqdn_cert: "{{ kolla_certificates_dir }}/haproxy.pem"
@@ -463,7 +470,6 @@ enable_ovs_dpdk: true
 #enable_placement: "{{ enable_nova | bool }}"
 #enable_prometheus: false
 #enable_proxysql: true
-enable_proxysql: false
 #enable_valkey: false
 #enable_skyline: false
 #enable_tacker: false
