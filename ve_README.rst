@@ -44,8 +44,8 @@ Networks
 ============ =============================== ==================================
 Interface    Switch                          Use
 ============ =============================== ==================================
-eno1         voereir_switch_2, VLAN 2725     172.16.227.107: APIs, Horizon,
-                                             SSH, VXLAN tunnel endpoint
+eno1         voereir_switch_2, VLAN 2725     172.16.227.107 and VIP .7: APIs,
+                                             Horizon, SSH, VXLAN endpoint
 eno2         voereir_switch_2, VLAN 2725     ``br_ex`` (kernel port),
                                              ``physnet2``: external network,
                                              floating IPs
@@ -55,6 +55,12 @@ enp8s0f0     voereir_switch 1/29, VLAN 1     ``br_dpdk`` (DPDK port),
 enp8s0f1     voereir_switch 1/9, VLAN 1000   16 SR-IOV VFs, ``sriovnet1``:
              (tagged)                        SR-IOV networks, 30.0.0.0/24
 ============ =============================== ==================================
+
+APIs and Horizon: ``https://hibiscus.voereir.io``. The name resolves to the VIP
+172.16.227.7 on eno1, held by keepalived and served by HAProxy with the
+``*.voereir.io`` wildcard certificate. The host itself is 172.16.227.107; the
+VIP must be a different address, as HAProxy and the API services listen on the
+same ports.
 
 OpenStack networks (created by ``voereir07-networks.sh``):
 
@@ -156,6 +162,25 @@ in place to 24.04, the host OS kolla-ansible 2026.2 supports.
 
    The router gateway takes .12, leaving 7 floating IPs. If the range changes,
    change ``voereir07-networks.sh`` to match.
+
+#. API VIP and domain name: reserve 172.16.227.7 and point
+   ``hibiscus.voereir.io`` at it, in MAAS DNS and in the public ``voereir.io``
+   zone on Namecheap (A record ``hibiscus`` -> 172.16.227.7). In MAAS, a DNS
+   resource with an address also reserves that address:
+
+   .. code-block:: console
+
+      maas $PROFILE dnsresources read | jq -r '.[] | select(.fqdn=="hibiscus.voereir.io") | "\(.id) \([.ip_addresses[].ip] | join(","))"'
+      maas $PROFILE dnsresource update <id> ip_addresses=172.16.227.7
+      maas $PROFILE dnsresources create fqdn=hibiscus.voereir.io ip_addresses=172.16.227.7   # if there is none yet
+
+   Check from the workstation and from the node; both must return
+   172.16.227.7:
+
+   .. code-block:: console
+
+      dig +short hibiscus.voereir.io
+      getent hosts hibiscus.voereir.io
 
 #. PERC boot device: Ctrl+R during POST, *Ctrl Mgmt* tab, *Select Boot
    Device* = VD1 (virt02). (Not the F2 menu of *VD Mgmt*, which has *Clear
@@ -315,6 +340,23 @@ and ``config/`` are symlinks into the repository.
 
 ``cp --update=none`` keeps an existing ``passwords.yml``.
 
+TLS certificate: HAProxy needs the ``*.voereir.io`` certificate, its chain and
+its private key in one file. Copy ``fullchain.pem`` and ``privkey.pem`` (the
+certbot file names) from where the wildcard certificate is kept to the node,
+then:
+
+.. code-block:: console
+
+   mkdir -p /etc/kolla/certificates && (umask 077 && cat fullchain.pem privkey.pem > /etc/kolla/certificates/haproxy-internal.pem)
+   cp -p /etc/kolla/certificates/haproxy-internal.pem /etc/kolla/certificates/haproxy.pem
+   rm fullchain.pem privkey.pem
+   openssl x509 -in /etc/kolla/certificates/haproxy-internal.pem -noout -subject -ext subjectAltName -enddate
+
+The SAN must contain ``*.voereir.io``. kolla copies ``haproxy-internal.pem``
+and ``haproxy.pem`` (internal and external endpoints share the VIP, so both
+are used). ``/etc/kolla/certificates`` is outside the repository; never commit
+the key.
+
 Check:
 
 .. code-block:: console
@@ -435,6 +477,60 @@ A VM with a normal, an OVS-DPDK and an SR-IOV vNIC, and a floating IP:
 
 The CirrOS login is ``cirros`` / ``gocubsgo``. Pinned VMs need a flavor with
 ``hw:cpu_policy=dedicated`` as well.
+
+Domain name and TLS on an existing deployment
+=============================================
+
+The first deployment ran without HAProxy, with the APIs on
+``http://172.16.227.107``. Moving it to ``https://hibiscus.voereir.io``:
+
+#. DNS and VIP: MAAS step "API VIP and domain name" (172.16.227.7 reserved,
+   ``hibiscus.voereir.io`` pointing to it in MAAS and on Namecheap).
+#. Bring ``globals.yml`` to the node (step 0). It sets
+   ``kolla_internal_vip_address: "172.16.227.7"``,
+   ``kolla_internal_fqdn`` and ``kolla_external_fqdn``
+   ``"hibiscus.voereir.io"``, ``enable_haproxy: true`` (keepalived follows),
+   ``keepalived_virtual_router_id: "107"`` and
+   ``kolla_enable_tls_internal: true``.
+#. Install the certificate (step 3, *TLS certificate*).
+#. Check and deploy. ``deploy`` adds HAProxy and keepalived, moves the API
+   endpoints in Keystone to ``https://hibiscus.voereir.io`` and restarts the
+   services. The APIs are briefly unavailable; running VMs are not affected.
+
+   .. code-block:: console
+
+      kolla-ansible prechecks -i $INV --use-test-images
+      kolla-ansible deploy -i $INV
+      kolla-ansible post-deploy -i $INV
+      source /etc/kolla/admin-openrc.sh
+
+#. Check:
+
+   .. code-block:: console
+
+      ip -br addr show eno1                                # 172.16.227.107 and 172.16.227.7
+      openssl s_client -connect hibiscus.voereir.io:5000 -servername hibiscus.voereir.io </dev/null 2>/dev/null | openssl x509 -noout -subject -enddate
+      openstack endpoint list -c "Service Name" -c Interface -c URL
+      curl -sI https://hibiscus.voereir.io | head -1
+
+   All endpoints should be ``https://hibiscus.voereir.io:<port>``, and
+   Horizon is at ``https://hibiscus.voereir.io``.
+
+``keepalived_virtual_router_id`` must be unique among VRRP users on
+VLAN 2725; other kolla clouds there may use the default 51. ProxySQL stays
+disabled; HAProxy fronts MariaDB.
+
+Renewing the certificate
+------------------------
+
+The ``*.voereir.io`` certificate is a Let's Encrypt certificate and expires
+after 90 days. After renewing it, rebuild the two files in
+``/etc/kolla/certificates`` (step 3, *TLS certificate*), then copy them into
+HAProxy and restart it:
+
+.. code-block:: console
+
+   kolla-ansible reconfigure -i $INV -t loadbalancer
 
 Changing the configuration
 ==========================
