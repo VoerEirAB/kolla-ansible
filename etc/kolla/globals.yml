@@ -45,6 +45,7 @@ workaround_ansible_issue_8743: true
 
 # Valid options are ['debian', 'rocky', 'ubuntu']
 #kolla_base_distro: "rocky"
+kolla_base_distro: "ubuntu"
 
 # Do not override this unless you know what you are doing.
 #openstack_release: "master"
@@ -64,6 +65,7 @@ workaround_ansible_issue_8743: true
 # in "OpenStack options" section, and set this value to the IP of your
 # 'network_interface' as set in the Networking section below.
 #kolla_internal_vip_address: "10.10.10.254"
+kolla_internal_vip_address: "172.16.227.107"
 
 # This is the DNS name that maps to the kolla_internal_vip_address VIP. By
 # default it is the same as kolla_internal_vip_address.
@@ -91,6 +93,12 @@ workaround_ansible_issue_8743: true
 # Set desired container engine to deploy on or migrate to
 # Valid options are [ docker, podman ]
 #kolla_container_engine: docker
+kolla_container_engine: podman
+
+# Python venv on the target host for kolla's modules (dbus, podman SDK).
+# Created by bootstrap-servers and used as ansible_python_interpreter, so the
+# kolla-ansible venv doesn't need them. Same as kolla's Ubuntu CI.
+virtualenv: "/opt/kolla-runtime-venv"
 
 
 ################
@@ -131,6 +139,7 @@ workaround_ansible_issue_8743: true
 # interface on all hosts and give the bond name here. Similar strategy can be
 # followed for other types of interfaces.
 #network_interface: "eth0"
+network_interface: "eno1"
 
 # These can be adjusted for even more customization. The default is the same as
 # the 'network_interface'. These interfaces must contain an IP address.
@@ -156,6 +165,7 @@ workaround_ansible_issue_8743: true
 # configurations. It is recommended this interface not be configured with any IP
 # addresses for that reason.
 #neutron_external_interface: "eth1"
+neutron_external_interface: "enp8s0f0,eno2"
 
 # Valid options are [ openvswitch, ovn ]
 #neutron_plugin_agent: "openvswitch"
@@ -324,6 +334,7 @@ workaround_ansible_issue_8743: true
 #enable_glance: "{{ enable_openstack_core | bool }}"
 #enable_hacluster: false
 #enable_haproxy: true
+enable_haproxy: false
 #enable_keepalived: "{{ enable_haproxy | bool }}"
 #enable_keystone: "{{ enable_openstack_core | bool }}"
 #enable_mariadb: true
@@ -343,9 +354,12 @@ workaround_ansible_issue_8743: true
 #enable_ceph_rgw: false
 #enable_ceph_rgw_loadbalancer: "{{ enable_ceph_rgw | bool }}"
 #enable_cinder: false
+enable_cinder: true
 #enable_cinder_backup: true
+enable_cinder_backup: false
 #enable_cinder_backend_iscsi: "{{ enable_cinder_backend_lvm | bool }}"
 #enable_cinder_backend_lvm: false
+enable_cinder_backend_lvm: true
 #enable_cinder_backend_nfs: false
 #enable_cinder_backend_quobyte: false
 #enable_cinder_backend_pure_iscsi: false
@@ -403,6 +417,7 @@ workaround_ansible_issue_8743: true
 #enable_multipathd: false
 #enable_neutron_vpnaas: false
 #enable_neutron_sriov: false
+enable_neutron_sriov: true
 #enable_neutron_dvr: false
 #enable_neutron_fwaas: false
 #enable_neutron_qos: false
@@ -431,10 +446,12 @@ workaround_ansible_issue_8743: true
 #enable_openvswitch: "{{ enable_neutron }}"
 #enable_ovn: "{{ enable_neutron | bool and neutron_plugin_agent == 'ovn' }}"
 #enable_ovs_dpdk: false
+enable_ovs_dpdk: true
 #enable_osprofiler: false
 #enable_placement: "{{ enable_nova | bool }}"
 #enable_prometheus: false
 #enable_proxysql: true
+enable_proxysql: false
 #enable_valkey: false
 #enable_skyline: false
 #enable_tacker: false
@@ -873,3 +890,35 @@ workaround_ansible_issue_8743: true
 # If `etcd_remove_deleted_members` is enabled, Kolla Ansible will automatically
 # remove etcd members from the cluster that are no longer in the inventory.
 #etcd_remove_deleted_members: false
+
+########################################
+# voereir07: OVS-DPDK and SR-IOV
+########################################
+# physnet1 = br_dpdk: enp8s0f0 (X520, switch access port in VLAN 1,
+#            20.0.0.0/24) as a DPDK port. OVS-DPDK additional networks.
+# physnet2 = br_ex: eno2 (1G Broadcom LOM, VLAN 2725, 172.16.227.0/24). DPDK
+#            can't drive it, so it is not bound to DPDK and is added to br_ex
+#            as a kernel port after deploy. External network (floating IPs).
+# sriovnet1: enp8s0f1 (X520, trunk VLAN 1000) VFs. SR-IOV additional networks.
+neutron_bridge_name: "br_dpdk,br_ex"
+ovs_port_mappings: "enp8s0f0:br_dpdk"
+neutron_sriov_physnet_mappings:
+  sriovnet1: "enp8s0f1"
+
+# kolla derives the DPDK bridge address from neutron_external_interface, which
+# breaks with two interfaces ("enp8s0f0,eno2") and once enp8s0f0 has left the
+# kernel for DPDK. Set it here. The address isn't used: tunnels stay on
+# network_interface.
+dpdk_tunnel_interface_address: "20.0.0.107"
+ovs_cidr_mappings: "br_dpdk:20.0.0.107/24"
+# One 1G hugepage per NUMA node for OVS-DPDK.
+ovs_socket_mem: "1024,1024"
+ovs_dpdk_interface_driver: "vfio-pci"
+# CPU layout: NUMA node 0 = even CPUs, node 1 = odd; CPU n and n+12 are
+# HT siblings. The X520 is on node 0.
+#   0,12  1,13          host and control plane (OVS lcore on CPU 0)
+#   2,14                OVS-DPDK PMD threads (node 0, next to the X520)
+#   3-5,15-17           nova shared CPUs (unpinned VMs, emulator threads)
+#   6-11,18-23          nova dedicated CPUs (hw:cpu_policy=dedicated)
+ovs_coremask: "0x1"
+ovs_pmd_coremask: "0x4004"

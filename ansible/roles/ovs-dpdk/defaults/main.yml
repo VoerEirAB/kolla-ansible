@@ -50,6 +50,15 @@ ovs_cidr_mappings: >-
   {% else %} {{ neutron_bridge_name }}:{{ tunnel_interface_cidr }} {% endif %}
 ovs_mem_channels: 4
 ovs_socket_mem: 1024
+# CPU masks and NIC driver for ovs-dpdkctl.sh. These were not passed through
+# before, so the script always used its own defaults (the values below).
+# ovs_coremask: dpdk-lcore-mask, CPUs for OVS non-datapath threads.
+# ovs_pmd_coremask: pmd-cpu-mask, CPUs for the DPDK poll-mode threads.
+# ovs_dpdk_interface_driver: kernel driver DPDK NICs are bound to
+# (uio_pci_generic or vfio-pci).
+ovs_coremask: "0x1"
+ovs_pmd_coremask: "0x2"
+ovs_dpdk_interface_driver: "uio_pci_generic"
 ovs_hugepage_mountpoint: /dev/hugepages
 
 # ovs <2.7 required dpdk phyical port names to be index

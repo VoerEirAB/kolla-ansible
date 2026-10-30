@@ -35,6 +35,10 @@
     cidr_mappings: "{{ ovs_cidr_mappings }}"
     ovs_mem_channels: "{{ ovs_mem_channels }}"
     ovs_socket_mem: "{{ ovs_socket_mem }}"
+    # Without these, ovs-dpdkctl.sh falls back to its built-in defaults.
+    ovs_coremask: "{{ ovs_coremask }}"
+    pmd_coremask: "{{ ovs_pmd_coremask }}"
+    dpdk_interface_driver: "{{ ovs_dpdk_interface_driver }}"
     hugepage_mountpoint: "{{ ovs_hugepage_mountpoint }}"
     ovs_physical_port_policy: "{{ ovs_physical_port_policy }}"
 
@@ -49,5 +53,9 @@
     cidr_mappings: "{{ ovs_cidr_mappings }}"
     ovs_mem_channels: "{{ ovs_mem_channels }}"
     ovs_socket_mem: "{{ ovs_socket_mem }}"
+    # Without these, ovs-dpdkctl.sh falls back to its built-in defaults.
+    ovs_coremask: "{{ ovs_coremask }}"
+    pmd_coremask: "{{ ovs_pmd_coremask }}"
+    dpdk_interface_driver: "{{ ovs_dpdk_interface_driver }}"
     hugepage_mountpoint: "{{ ovs_hugepage_mountpoint }}"
     ovs_physical_port_policy: "{{ ovs_physical_port_policy }}"

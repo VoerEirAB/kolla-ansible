@@ -1,0 +1,163 @@
+#cloud-config
+# voereir07: kolla-ansible AIO (OpenStack 2026.2) on Ubuntu 24.04.
+# Deployed by MAAS as 22.04 (jammy), then upgraded with do-release-upgrade,
+# as MAAS fails to deploy 24.04+ here (LP: #2171042).
+# Based on CloudConfig.yaml, with these changes:
+#  - no ufw: kolla-ansible bootstrap-servers disables host firewalls
+#    (disable_firewall: true), and ufw would block the OpenStack APIs
+#  - hostname must not resolve to 127.0.1.1 (breaks RabbitMQ), so cloud-init
+#    no longer manages /etc/hosts and that line is removed
+#  - host iscsid disabled, as kolla runs its own iscsid container for Cinder LVM
+#  - packages for running kolla-ansible from this host
+# The "cinder-volumes" LVM volume group is created by MAAS (storage layout).
+#
+# Aligned with "Authentication & Authorization Setup" (IT space):
+#  - no common login user; one account per person
+#  - groups (plural): voereir_admins, voereir_users, voereir_visitors
+#  - admins: primary group voereir_admins (no per-user group), plus adm, sudo,
+#    voereir_users and voereir_visitors
+#  - shared directories (singular) /opt/voereir_admin and /opt/voereir_visitor,
+#    owned by voereir_admins and voereir_visitors, linked into admin homes
+#  - common "voereir" user (in voereir_users) for rootless services, never reachable over SSH
+#  - SSH only for recognised users; root, postgres and voereir denied
+#  - ufw enabled with SSH allowed
+
+groups:
+  - voereir_admins
+  - voereir_users
+  - voereir_visitors
+
+users:
+  - name: safiyat
+    gecos: Md Safiyat Reza
+    primary_group: voereir_admins
+    no_user_group: true
+    groups: [adm, sudo, voereir_users, voereir_visitors]
+    shell: /bin/bash
+    lock_passwd: false
+    # 8D
+    hashed_passwd: "$6$l0XwyUrFFC0IIrcw$kXolAK481wD22EpVrXX/j1IN4RFhbiiE56niw4aHKKINu2Y.U23pp59DpiV6gWAaN5q/1bvcbk8rBqxksi5b.0"
+    ssh_import_id: ["gh:safiyat"]
+    # Keys from github.com/safiyat.keys (fetched 2026-10-16), so login works
+    # even if ssh_import_id can't reach GitHub at first boot.
+    ssh_authorized_keys:
+      - ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBAAvBxzAp5K9ZrhjvMwiUjxaQFYVbe9NntQTDCXOufzUi+RQ9GuIgE7oVVh9nSE+lUiaAjBKj3LxH5bJ9OjhgZDqfQFF1nW9oHeAMoZRvKVeJ8zNvErraJT+0dhb908svnw22GfXsDSRQlMxlYP6HSthuLlngVeUIeHGE35GSDuBuQC2bQ== gh:safiyat
+
+  - name: rouf
+    primary_group: voereir_admins
+    no_user_group: true
+    groups: [adm, sudo, voereir_users, voereir_visitors]
+    shell: /bin/bash
+    lock_passwd: false
+    # hashed_passwd: "<mkpasswd -m sha-512 output for rouf>"
+    ssh_import_id: ["gh:Rouf111"]
+    # Keys from github.com/Rouf111.keys (fetched 2026-10-16), so login works
+    # even if ssh_import_id can't reach GitHub at first boot.
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC1P6BStb99c/cbxLe5M53vU6PtKvxCu/cZRa1GiLSWqkHcw5cFzHwHVWoTnzYTQPyCn3IXSmbfcO66ju3YfPXdI035pBDFfAPwhfziw/NC+n/K/A2qIgcNEYfhJVc4VfUHPiTQct9f7EngYZwWv36N20KeA9kbDR2mGo2ehXiMEiVIGArFoTXV5td2B7s0CS+UdiR/r1iJ+c0zoDOahwmUPBgO/JzMpj29+ZIwj+kTTSed7+OX34YB5UjoWUgJx4hC10UrDdVFvqlIJZo6/dnUYZoVrK7V4qNeYwPeOERwi1CNIY3VOFcvxgfUnG83ec8gSMCHj7Ny1/ziSjde+iz7 rouf@mohmads-MacBook-Pro.local
+
+  - name: pranav
+    primary_group: voereir_admins
+    no_user_group: true
+    groups: [adm, sudo, voereir_users, voereir_visitors]
+    shell: /bin/bash
+    lock_passwd: false
+    hashed_passwd: "$6$sX2upFEsUrl81e8v$aGVp1a6i.r904170hFXXZFEU.DIg4U0sOwsBdeZeqINFokdITKMBaALb62N16sLsgC0almd/N4Gyzmzdzw9Mj/"
+    ssh_import_id: ["gh:pranav79"]
+    # Keys from github.com/pranav79.keys (fetched 2026-10-16), so login works
+    # even if ssh_import_id can't reach GitHub at first boot.
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGkcT6rWennbQ0AB291pgwYO2m8XGfndotYc57Yhy+j/ gh:pranav79
+
+  # Common user for rootless services. No password, no SSH (see DenyUsers below).
+  - name: voereir
+    groups: [voereir_users, voereir_visitors]
+    shell: /bin/bash
+    lock_passwd: true
+
+# Key-based SSH only; passwords are for sudo and the iDRAC console.
+ssh_pwauth: false
+disable_root: true
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-voereir-access.conf
+    permissions: "0644"
+    content: |
+      PermitRootLogin no
+      AllowUsers safiyat rouf pranav
+      DenyUsers voereir root postgres
+  # DNS: MAAS DNS (172.16.227.116) as nameserver, with "voereir.io" and "maas"
+  # as search domains (in that order, so short names try voereir.io first).
+  # Set globally, so it applies regardless of interface.
+  - path: /etc/systemd/resolved.conf.d/voereir.conf
+    permissions: "0644"
+    content: |
+      [Resolve]
+      DNS=172.16.227.116
+      Domains=voereir.io maas
+  # Shell history: timestamps, no duplicates, long history. Appended to the
+  # skeleton .bashrc (write_files runs before the users are created), so it
+  # comes after, and overrides, Ubuntu's default HISTSIZE/HISTCONTROL.
+  - path: /etc/skel/.bashrc
+    append: true
+    content: |
+
+      # VoerEir: shell history settings
+      HISTTIMEFORMAT="%F %T: "
+      HISTCONTROL=ignoredups:erasedups
+      HISTSIZE=10000
+      HISTFILESIZE=200000
+  - path: /root/.bashrc
+    append: true
+    content: |
+
+      # VoerEir: shell history settings
+      HISTTIMEFORMAT="%F %T: "
+      HISTCONTROL=ignoredups:erasedups
+      HISTSIZE=10000
+      HISTFILESIZE=200000
+  # Login banner from color.logo.txt (ANSI colours). Stored gzip+base64 because
+  # YAML can't hold the raw escape characters. Regenerate with:
+  #   gzip -9c color.logo.txt | base64 -w0
+  - path: /etc/motd
+    permissions: "0644"
+    encoding: gz+b64
+    content: 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
+
+runcmd:
+  # Shared directories for each group, linked into every admin's home
+  - [mkdir, -p, /opt/voereir_admin, /opt/voereir_visitor]
+  - [chown, "root:voereir_admins", /opt/voereir_admin]
+  - [chown, "root:voereir_visitors", /opt/voereir_visitor]
+  - [chmod, "775", /opt/voereir_admin, /opt/voereir_visitor]
+  - [sh, -c, 'for u in safiyat rouf pranav; do ln -sfn /opt/voereir_admin /home/$u/voereir_admin; ln -sfn /opt/voereir_visitor /home/$u/voereir_visitor; done']
+  - [systemctl, restart, systemd-resolved]
+  - [systemctl, restart, ssh]
+  # kolla-ansible: hostname must resolve to the API interface, not 127.0.1.1
+  - [sed, -i, '/^127\.0\.1\.1[[:space:]]/d', /etc/hosts]
+  # kolla-ansible: Cinder LVM uses kolla's iscsid container, not the host's
+  - [sh, -c, 'systemctl disable --now iscsid.socket iscsid.service || true']
+
+package_update: true
+packages:
+  - vim
+  - nethogs
+  # kolla-ansible deployment host
+  - git
+  - python3-dev
+  - python3-venv
+  - libffi-dev
+  - gcc
+  - libssl-dev
+  # dbus-python, built by bootstrap-servers in the kolla runtime venv
+  - libdbus-glib-1-dev
+  - pkg-config
+  # kolla ovs-dpdk role: ovs-dpdkctl.sh keeps its config with crudini
+  - crudini
+  # Cinder LVM backend
+  - lvm2
+  - thin-provisioning-tools
+
+timezone: Asia/Kolkata
+
+manage_etc_hosts: false
